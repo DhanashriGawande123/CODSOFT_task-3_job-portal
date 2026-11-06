@@ -1,36 +1,68 @@
+const fs = require("fs");
 const Application = require("../models/Application");
 const Job = require("../models/Job");
+
+// Delete the uploaded file if the application is rejected after upload
+const removeUploadedFile = (req) => {
+  if (req.file && req.file.path) {
+    fs.unlink(req.file.path, () => {});
+  }
+};
 
 // Candidate applies to a job
 exports.applyToJob = async (req, res) => {
   try {
     const { jobId } = req.params;
-    const { coverLetter } = req.body;
-
-    console.log("jobId:", jobId);
-    console.log("req.user:", req.user);
-    console.log("req.file:", req.file);
+    const {
+      coverLetter,
+      phone,
+      currentLocation,
+      experience,
+      expectedSalary,
+      noticePeriod,
+    } = req.body;
 
     const job = await Job.findById(jobId);
-    if (!job) return res.status(404).json({ message: "Job not found" });
+    if (!job) {
+      removeUploadedFile(req);
+      return res.status(404).json({ message: "Job not found" });
+    }
+
+    if (job.status !== "open") {
+      removeUploadedFile(req);
+      return res
+        .status(400)
+        .json({ message: "This job is no longer accepting applications" });
+    }
 
     if (!req.file) {
       return res.status(400).json({ message: "Resume file is required" });
+    }
+
+    if (!phone || !/^[+]?[0-9\s-]{10,15}$/.test(phone.trim())) {
+      removeUploadedFile(req);
+      return res.status(400).json({ message: "Enter a valid phone number" });
     }
 
     const application = await Application.create({
       job: jobId,
       candidate: req.user.id,
       resumeUrl: `/uploads/resumes/${req.file.filename}`,
-      coverLetter,
+      coverLetter: coverLetter ? coverLetter.slice(0, 1000) : undefined,
+      phone: phone.trim(),
+      currentLocation,
+      experience,
+      expectedSalary,
+      noticePeriod,
     });
 
     res.status(201).json(application);
   } catch (err) {
-    console.log("FULL ERROR OBJECT:", err);
+    removeUploadedFile(req);
     if (err.code === 11000) {
       return res.status(400).json({ message: "You already applied to this job" });
     }
+    console.error("Apply error:", err.message);
     res.status(500).json({ message: err.message });
   }
 };

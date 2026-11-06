@@ -10,20 +10,26 @@ const {
   getRecruiterPipeline,
 } = require("../controllers/applicationController");
 
+// Runs the upload and returns a clear 400 message if the file is rejected
+const uploadResume = (req, res, next) => {
+  upload.single("resume")(req, res, (err) => {
+    if (err) {
+      const message =
+        err.code === "LIMIT_FILE_SIZE"
+          ? "Resume must be 5 MB or smaller"
+          : err.message || "Upload failed";
+      return res.status(400).json({ message });
+    }
+    next();
+  });
+};
+
 // Candidate routes
 router.post(
   "/apply/:jobId",
   protect,
   authorize("candidate"),
-  (req, res, next) => {
-    upload.single("resume")(req, res, function (err) {
-      if (err) {
-        console.log("UPLOAD MIDDLEWARE ERROR:", err);
-        return res.status(500).json({ message: err.message || "Upload failed" });
-      }
-      next();
-    });
-  },
+  uploadResume,
   applyToJob
 );
 router.get("/my-applications", protect, authorize("candidate"), getMyApplications);
